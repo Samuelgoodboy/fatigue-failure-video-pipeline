@@ -1,0 +1,45 @@
+FATIGUE FAILURE — THREE-MINUTE ACADEMIC NARRATION
+Voice: Natural American English (or British English), university engineering lecturer
+Tone: Calm, authoritative, articulate, engaging, warm but not theatrical
+Pace: Approx. 135–150 words per minute, with short natural pauses
+Delivery: Crisp consonants, clear technical vocabulary, light emphasis rather than shouting
+Audio: Clean, dry studio recording; no reverb, no music in the voice track
+Target total runtime: 3:00 (includes natural pauses and closing hold)
+
+[00:00–00:10.5 | Hook | Curious, conversational]
+Ever bent a paper clip back and forth until it snapped? The force was small, yet the metal failed. Why? The answer is fatigue failure.
+
+[00:10.5–00:23.0 | Definition | Reassuringly clear]
+Fatigue happens when a material is loaded repeatedly. A component can survive a large force once, but break after many smaller forces. Damage builds up one cycle at a time.
+
+[00:23.0–00:36.2 | Cycle | Gently illustrate]
+Picture a bicycle wheel. Each rotation changes the forces on its spokes. One complete loading and unloading is called a cycle. Repeated cycles can gradually create microscopic damage.
+
+[00:36.2–00:51.7 | Three stages | First... Next... Finally...]
+Fatigue failure usually follows three stages. First, a tiny crack forms near a scratch, corner, or defect. Next, repeated loads make the crack longer. Finally, the remaining metal cannot support the load, and it breaks.
+
+[00:51.7–01:06.7 | Crack animation | Deliberate pacing]
+Watch the strip as the load is applied, released, then applied again. The crack slowly grows with each cycle. It may be almost invisible, even as the component moves closer to failure.
+
+[01:06.7–01:25.1 | Fracture surface | Thoughtful emphasis]
+After a real component breaks, engineers examine the fracture surface. Curved beach marks may reveal how the crack advanced over time. A rougher region can show the final sudden break. These patterns help engineers identify where the crack began.
+
+[01:25.1–01:39.7 | S–N diagram | Precise and explanatory]
+To estimate fatigue life, engineers use an S–N diagram. S stands for stress amplitude: the size of the repeated stress. N stands for the number of cycles until failure. Together, they describe how stress affects life.
+
+[01:39.7–01:56.4 | Endurance limit | Emphasize ENDURANCE LIMIT clearly]
+Notice the trend: high stress usually means fewer cycles before failure. Lower stress often means longer life. For some materials, particularly many steels, a threshold called the ENDURANCE LIMIT may exist. This simplified curve is not experimental data.
+
+[01:56.4–02:12.6 | Fracture toughness | Emphasize FRACTURE TOUGHNESS clearly]
+But fatigue life is only part of the story. FRACTURE TOUGHNESS describes a material's resistance to crack-driven fracture. As a crack grows, stress becomes concentrated near its tip. Eventually, that crack may become dangerously unstable.
+
+[02:12.6–02:27.6 | K | Clear technical description]
+Engineers describe crack-tip loading using stress intensity, represented by K. In a simplified case, K increases with applied stress and the square root of crack length. When K reaches a critical value, rapid fracture can begin.
+
+[02:27.6–02:42.0 | Prevention | Practical and concise]
+So how can we prevent fatigue failure? Reduce repeated stress. Avoid sharp corners. Choose suitable materials. Inspect important components regularly. The goal is to find and manage small cracks before they become dangerous.
+
+[02:42.0–03:00.0 | Summary | Confident, encouraging close]
+The key idea is simple: repeated loading can start a crack, and each cycle may help it grow. The S–N diagram describes fatigue life; the endurance limit applies to some materials; and fracture toughness helps explain sudden fracture. Thanks for watching.
+
+PRODUCTION NOTE: The scene timecodes match the current video structure. Actual word-level subtitle timings must be re-aligned after producing the final voice audio, rather than reusing old timings.
