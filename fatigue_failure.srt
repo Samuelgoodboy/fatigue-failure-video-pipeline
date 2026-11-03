@@ -1,0 +1,184 @@
+1
+00:00:00,050 --> 00:00:03,451
+Ever bent a paper clip back and forth until it snapped?
+
+2
+00:00:03,451 --> 00:00:06,372
+The force was small, yet the metal failed.
+
+3
+00:00:06,372 --> 00:00:07,119
+Why?
+
+4
+00:00:07,119 --> 00:00:09,076
+The answer is fatigue failure.
+
+5
+00:00:09,076 --> 00:00:12,635
+Fatigue happens when a material is loaded repeatedly.
+
+6
+00:00:12,635 --> 00:00:18,423
+A component can survive a large force once, but break after many smaller forces.
+
+7
+00:00:18,423 --> 00:00:20,978
+Damage builds up one cycle at a time.
+
+8
+00:00:20,978 --> 00:00:22,663
+Picture a bicycle wheel.
+
+9
+00:00:22,663 --> 00:00:26,073
+Each rotation changes the forces on its spokes.
+
+10
+00:00:26,073 --> 00:00:29,918
+One complete loading and unloading is called a cycle.
+
+11
+00:00:29,918 --> 00:00:34,252
+Repeated cycles can gradually create microscopic damage.
+
+12
+00:00:34,252 --> 00:00:37,730
+Fatigue failure usually follows three stages.
+
+13
+00:00:37,730 --> 00:00:42,635
+First, a tiny crack forms near a scratch, corner, or defect.
+
+14
+00:00:42,635 --> 00:00:45,883
+Next, repeated loads make the crack longer.
+
+15
+00:00:45,883 --> 00:00:50,584
+Finally, the remaining metal cannot support the load, and it breaks.
+
+16
+00:00:50,584 --> 00:00:55,353
+Watch the strip as the load is applied, released, then applied again.
+
+17
+00:00:55,353 --> 00:00:58,220
+The crack slowly grows with each cycle.
+
+18
+00:00:58,220 --> 00:01:03,410
+It may be almost invisible, even as the component moves closer to failure.
+
+19
+00:01:03,410 --> 00:01:08,355
+After a real component breaks, engineers examine the fracture surface.
+
+20
+00:01:08,355 --> 00:01:12,513
+Curved beach marks may reveal how the crack advanced over time.
+
+21
+00:01:12,513 --> 00:01:15,665
+A rougher region can show the final sudden break.
+
+22
+00:01:15,665 --> 00:01:19,442
+These patterns help engineers identify where the crack began.
+
+23
+00:01:19,442 --> 00:01:23,899
+To estimate fatigue life, engineers use an S-N diagram.
+
+24
+00:01:23,899 --> 00:01:28,641
+S stands for stress amplitude: the size of the repeated stress.
+
+25
+00:01:28,641 --> 00:01:31,874
+N stands for the number of cycles until failure.
+
+26
+00:01:31,874 --> 00:01:35,271
+Together, they describe how stress affects life.
+
+27
+00:01:35,271 --> 00:01:40,461
+Notice the trend: high stress usually means fewer cycles before failure.
+
+28
+00:01:40,461 --> 00:01:43,192
+Lower stress often means longer life.
+
+29
+00:01:43,192 --> 00:01:49,877
+For some materials, particularly many steels, a threshold called the endurance limit may exist.
+
+30
+00:01:49,877 --> 00:01:53,315
+This simplified curve is not experimental data.
+
+31
+00:01:53,315 --> 00:01:56,372
+But fatigue life is only part of the story.
+
+32
+00:01:56,372 --> 00:02:01,453
+Fracture toughness describes a material's resistance to crack-driven fracture.
+
+33
+00:02:01,453 --> 00:02:05,855
+As a crack grows, stress becomes concentrated near its tip.
+
+34
+00:02:05,855 --> 00:02:09,864
+Eventually, that crack may become dangerously unstable.
+
+35
+00:02:09,864 --> 00:02:15,815
+Engineers describe crack-tip loading using stress intensity, represented by K.
+
+36
+00:02:15,815 --> 00:02:22,133
+In a simplified case, K increases with applied stress and the square root of crack length.
+
+37
+00:02:22,133 --> 00:02:26,358
+When K reaches a critical value, rapid fracture can begin.
+
+38
+00:02:26,358 --> 00:02:28,668
+So how can we prevent fatigue failure?
+
+39
+00:02:28,668 --> 00:02:30,529
+Reduce repeated stress.
+
+40
+00:02:30,529 --> 00:02:32,133
+Avoid sharp corners.
+
+41
+00:02:32,133 --> 00:02:34,103
+Choose suitable materials.
+
+42
+00:02:34,103 --> 00:02:36,807
+Inspect important components regularly.
+
+43
+00:02:36,807 --> 00:02:41,453
+The goal is to find and manage small cracks before they become dangerous.
+
+44
+00:02:41,453 --> 00:02:47,744
+The key idea is simple: repeated loading can start a crack, and each cycle may help it grow.
+
+45
+00:02:47,744 --> 00:02:57,676
+The S-N diagram describes fatigue life; the endurance limit applies to some materials; and fracture toughness helps explain sudden fracture.
+
+46
+00:02:57,676 --> 00:02:58,872
+Thanks for watching.
+
