@@ -1,0 +1,1307 @@
+import os
+import re
+import tkinter as tk
+from tkinter import filedialog
+import cv2
+from moviepy.editor import VideoClip, VideoFileClip
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+# 1. 彈出視窗選擇【原影片(取音軌用)】與【真實斷口照片】
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+
+print("步驟 1/2：請選擇桌面上的【原影片】（擷取英文旁白音軌）...")
+audio_source_path = filedialog.askopenfilename(
+    initialdir=os.path.expanduser("~/Desktop"),
+    title="1. 請選擇【原影片】以擷取旁白音軌",
+    filetypes=[("Video/Audio", "*.mp4 *.mov *.mkv *.mp3 *.wav"), ("All", "*.*")],
+)
+
+print("步驟 2/2：請選擇【真實金屬斷口照片 (Beachmarks / Overstress)】...")
+specimen_img_path = filedialog.askopenfilename(
+    initialdir=os.path.expanduser("~/Desktop"),
+    title="2. 請選擇【真實金屬斷口照片】",
+    filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.webp"), ("All", "*.*")],
+)
+
+if not audio_source_path:
+  print("未選擇音軌來源影片，程式中止。")
+else:
+  desktop_dir = os.path.dirname(audio_source_path)
+  output_video = os.path.join(
+      desktop_dir, "Fatigue_Failure_Synced_Symbols_HD.mp4"
+  )
+
+  base_clip = VideoFileClip(audio_source_path)
+  duration = base_clip.duration
+  audio_clip = base_clip.audio
+
+  # 載入真實斷口照片
+  specimen_rgb = None
+  if specimen_img_path and os.path.exists(specimen_img_path):
+    img_bgr = cv2.imdecode(
+        np.fromfile(specimen_img_path, dtype=np.uint8), cv2.IMREAD_COLOR
+    )
+    if img_bgr is not None:
+      specimen_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+  # 載入字幕檔 (.srt)
+  srt_candidates = [
+      os.path.join(desktop_dir, "fatigue_failure.srt"),
+      os.path.splitext(audio_source_path)[0] + ".srt",
+  ]
+  subtitles = []
+  for srt_path in srt_candidates:
+    if os.path.exists(srt_path):
+      with open(srt_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+      pattern = re.compile(
+          r"(\d+:\d+:\d+[,\.]\d+)\s*-->\s*(\d+:\d+:\d+[,\.]\d+)\s*\n(.*?)(?=\n\n|\Z)",
+          re.DOTALL,
+      )
+      for match in pattern.finditer(content):
+
+        def to_sec(ts):
+          ts = ts.replace(",", ".")
+          h_s, m_s, s_s = ts.split(":")
+          return int(h_s) * 3600 + int(m_s) * 60 + float(s_s)
+
+        sub_text = " ".join(
+            [line.strip() for line in match.group(3).strip().splitlines()]
+        )
+        subtitles.append(
+            (to_sec(match.group(1)), to_sec(match.group(2)), sub_text)
+        )
+      print(f"成功載入字幕檔：{srt_path} (共 {len(subtitles)} 句)")
+      break
+
+  # 載入支援數學與希臘符號 (σ, √, π, Δ, ≥) 的 Windows 系統字型
+  def get_font(size, bold=False):
+    font_candidates = (
+        ["arialbd.ttf", "segoeuib.ttf", "calibrib.ttf", "msjhbd.ttc"]
+        if bold
+        else ["arial.ttf", "segoeui.ttf", "calibri.ttf", "msjh.ttc"]
+    )
+    for fname in font_candidates:
+      for folder in ["C:/Windows/Fonts", "/usr/share/fonts"]:
+        fpath = os.path.join(folder, fname)
+        if os.path.exists(fpath):
+          return ImageFont.truetype(fpath, size)
+    return ImageFont.load_default()
+
+  F_HEADER = get_font(24, bold=True)
+  F_TITLE = get_font(40, bold=True)
+  F_H2 = get_font(30, bold=True)
+  F_BODY = get_font(25, bold=False)
+  F_BODY_B = get_font(26, bold=True)
+  F_MATH_L = get_font(42, bold=True)
+  F_MATH_M = get_font(32, bold=True)
+  F_SMALL = get_font(21, bold=False)
+  F_SUB = get_font(30, bold=True)
+
+  def draw_text(
+      draw, pos, text, font, fill=(245, 248, 252), anchor_center=False
+  ):
+    if anchor_center:
+      bbox = draw.textbbox((0, 0), text, font=font)
+      tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+      pos = (pos[0] - tw // 2, pos[1] - th // 2)
+    draw.text(pos, text, font=font, fill=fill)
+
+  # 繪製含真正根號橫線 (Vinculum) 的數學根號表達式： √(內容)
+  def draw_sqrt_expr(
+      canvas, draw, x, y, prefix_str, inside_str, suffix_str, font, col
+  ):
+    draw.text((x, y), prefix_str, font=font, fill=col)
+    pb = draw.textbbox((x, y), prefix_str, font=font)
+    cur_x = pb[2] + 4
+
+    # 繪製根號勾 √
+    sb = draw.textbbox((cur_x, y), "√", font=font)
+    draw.text((cur_x, y), "√", font=font, fill=col)
+    rad_right = sb[2]
+    rad_top = sb[1] + 2
+
+    # 繪製根號內部文字與頂部橫線
+    ib = draw.textbbox((rad_right + 4, y), inside_str, font=font)
+    draw.text((rad_right + 4, y), inside_str, font=font, fill=col)
+    cv2.line(
+        canvas, (rad_right - 2, rad_top), (ib[2] + 4, rad_top), col, 3, cv2.LINE_AA
+    )
+
+    if suffix_str:
+      draw.text((ib[2] + 10, y), suffix_str, font=font, fill=col)
+
+  def draw_vector_h_arrow(
+      canvas, x_start, x_tip, y_center, col, shaft_h=8, head_w=24, head_h=22
+  ):
+    direction = 1 if x_tip > x_start else -1
+    x_neck = x_tip - direction * head_w
+    poly = np.array(
+        [
+            [x_start, y_center - shaft_h],
+            [x_neck, y_center - shaft_h],
+            [x_neck, y_center - head_h],
+            [x_tip, y_center],
+            [x_neck, y_center + head_h],
+            [x_neck, y_center + shaft_h],
+            [x_start, y_center + shaft_h],
+        ],
+        dtype=np.int32,
+    )
+    cv2.fillPoly(canvas, [poly], col, cv2.LINE_AA)
+
+  W, H = 1920, 1080
+
+  def make_frame(t):
+    canvas = np.zeros((H, W, 3), dtype=np.uint8)
+    canvas[:] = (13, 24, 36)
+
+    # 科研背景細網格
+    grid_col = (20, 36, 54)
+    for x in range(0, W, 60):
+      cv2.line(canvas, (x, 0), (x, H), grid_col, 1)
+    for y in range(0, H, 60):
+      cv2.line(canvas, (0, y), (W, y), grid_col, 1)
+
+    # 嚴格對應旁白時間軸的 8 大章節
+    if t < 21.0:
+      sec_idx, sec_title, s_t, e_t = (
+          1,
+          "01 / INTRODUCTION: WHAT IS FATIGUE FAILURE?",
+          0.0,
+          21.0,
+      )
+    elif t < 34.5:
+      sec_idx, sec_title, s_t, e_t = (
+          2,
+          "02 / CYCLIC LOADING: BICYCLE WHEEL & STRESS CYCLES",
+          21.0,
+          34.5,
+      )
+    elif t < 51.0:
+      sec_idx, sec_title, s_t, e_t = (
+          3,
+          "03 / THE THREE STAGES OF FATIGUE FAILURE",
+          34.5,
+          51.0,
+      )
+    elif t < 63.5:
+      sec_idx, sec_title, s_t, e_t = (
+          4,
+          "04 / MODE I CRACK PROPAGATION UNDER CYCLIC TENSION",
+          51.0,
+          63.5,
+      )
+    elif t < 79.5:
+      sec_idx, sec_title, s_t, e_t = (
+          5,
+          "05 / FRACTOGRAPHY: REAL FRACTURE SURFACE ANALYSIS",
+          63.5,
+          79.5,
+      )
+    elif t < 115.5:
+      sec_idx, sec_title, s_t, e_t = (
+          6,
+          "06 / S-N DIAGRAM (STRESS AMPLITUDE σ vs. CYCLES N)",
+          79.5,
+          115.5,
+      )
+    elif t < 146.5:
+      sec_idx, sec_title, s_t, e_t = (
+          7,
+          "07 / FRACTURE TOUGHNESS (K_IC) & STRESS INTENSITY (K)",
+          115.5,
+          146.5,
+      )
+    else:
+      sec_idx, sec_title, s_t, e_t = (
+          8,
+          "08 / PREVENTING FATIGUE FAILURE & KEY TAKEAWAYS",
+          146.5,
+          max(180.0, duration),
+      )
+
+    prog = np.clip((t - s_t) / max(0.1, (e_t - s_t)), 0.0, 1.0)
+
+    # 頂部導覽列框線
+    cv2.rectangle(canvas, (0, 0), (W, 74), (18, 32, 48), -1)
+    cv2.line(canvas, (0, 74), (W, 74), (56, 189, 248), 2)
+
+    # 建立 PIL 文字繪製層 (在幾何圖形繪製後統一疊加抗鋸齒真字型)
+    text_tasks = []
+    sqrt_tasks = []
+
+    text_tasks.append((
+        (60, 22),
+        "MATERIALS SCIENCE & ENGINEERING  |  FATIGUE FAILURE",
+        F_HEADER,
+        (56, 189, 248),
+        False,
+    ))
+    text_tasks.append(
+        ((W - 180, 22), f"0{sec_idx} / 08", F_HEADER, (180, 200, 220), False)
+    )
+    text_tasks.append(
+        ((60, 102), sec_title, F_TITLE, (245, 248, 252), False)
+    )
+
+    # ================= SCENE 1 (00:00 - 00:21): 前言 — 迴紋針彎折 & 單次大載荷 vs 多次小載荷 =================
+    if sec_idx == 1:
+      # 左側卡片 (00:00 起)：迴紋針往復彎折直到斷裂 ("Ever bent a paper clip back and forth until it snapped?")
+      cv2.rectangle(canvas, (80, 190), (880, 860), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (80, 190), (880, 860), (56, 189, 248), 2, cv2.LINE_AA
+      )
+      text_tasks.append((
+          (120, 220),
+          "Everyday Example: Bending a Paper Clip",
+          F_H2,
+          (56, 189, 248),
+          False,
+      ))
+
+      snapped = t >= 5.5
+      bend_angle = (
+          0.42 * np.sin(2 * np.pi * 1.3 * t) if not snapped else 0.55
+      )
+      cx, cy = 480, 520
+
+      # 繪製金屬迴紋針下半部固定端
+      cv2.line(
+          canvas, (cx - 90, cy), (cx - 90, cy + 160), (180, 195, 210), 14, cv2.LINE_AA
+      )
+      cv2.ellipse(
+          canvas,
+          (cx - 20, cy + 160),
+          (70, 50),
+          0,
+          0,
+          180,
+          (180, 195, 210),
+          14,
+          cv2.LINE_AA,
+      )
+      cv2.line(
+          canvas, (cx + 50, cy + 40), (cx + 50, cy + 160), (180, 195, 210), 14, cv2.LINE_AA
+      )
+
+      # 迴紋針上半部動態往復彎折端
+      top_dx = int(150 * np.sin(bend_angle))
+      top_dy = int(150 * np.cos(bend_angle))
+      offset_snap = 35 if snapped else 0
+      p_pivot = (cx - 90 + offset_snap, cy - offset_snap)
+      p_top = (p_pivot[0] + top_dx, p_pivot[1] - top_dy)
+      cv2.line(canvas, p_pivot, p_top, (242, 133, 94) if snapped else (210, 225, 240), 14, cv2.LINE_AA)
+
+      if not snapped:
+        # 彎折方向指示箭頭与塑性應變紅光
+        cv2.circle(canvas, (cx - 90, cy), 22, (255, 110, 60), -1, cv2.LINE_AA)
+        draw_vector_h_arrow(
+            canvas, cx - 90, cx - 90 + int(110 * np.sin(2 * np.pi * 1.3 * t)), cy - 170, (250, 204, 21)
+        )
+        text_tasks.append((
+            (480, 780),
+            "Small force applied back & forth...",
+            F_BODY_B,
+            (250, 204, 21),
+            True,
+        ))
+      else:
+        # 5.5 秒講到 snapped 時斷裂並冒出火花標記
+        for ang in [30, 75, 135, 210, 310]:
+          rad = np.deg2rad(ang)
+          cv2.line(
+              canvas,
+              (cx - 90, cy),
+              (cx - 90 + int(45 * np.cos(rad)), cy + int(45 * np.sin(rad))),
+              (248, 113, 113),
+              4,
+              cv2.LINE_AA,
+          )
+        text_tasks.append((
+            (480, 780),
+            "SNAPPED! Failed under small force (σ << σ_u)",
+            F_BODY_B,
+            (248, 113, 113),
+            True,
+        ))
+
+      # 右側卡片：依旁白秒數漸進出現 (00:08 定義疲勞，00:12 對比單次大載荷 vs 多次小載荷)
+      cv2.rectangle(canvas, (940, 190), (1840, 860), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (940, 190), (1840, 860), (70, 100, 130), 2, cv2.LINE_AA
+      )
+
+      if t >= 7.0:
+        text_tasks.append((
+            (980, 220),
+            "Why? The Answer is FATIGUE FAILURE",
+            F_H2,
+            (250, 204, 21),
+            False,
+        ))
+        text_tasks.append((
+            (980, 275),
+            "• Happens when a material is loaded repeatedly.",
+            F_BODY,
+            (220, 235, 245),
+            False,
+        ))
+
+      if t >= 12.5:
+        # 案例 A：單次大力量 (Survives a large force once)
+        cv2.rectangle(canvas, (980, 345), (1800, 545), (24, 44, 66), -1)
+        cv2.rectangle(
+            canvas, (980, 345), (1800, 545), (74, 222, 128), 2, cv2.LINE_AA
+        )
+        text_tasks.append((
+            (1010, 365),
+            "1. Single Large Static Load (σ < σ_u)  →  SURVIVES",
+            F_BODY_B,
+            (74, 222, 128),
+            False,
+        ))
+        cv2.rectangle(canvas, (1010, 425), (1760, 465), (45, 65, 85), -1)
+        cv2.rectangle(canvas, (1010, 425), (1620, 465), (74, 222, 128), -1)
+        text_tasks.append((
+            (1010, 485),
+            "Applied 1 time: High Stress (85% of Ultimate Strength σ_u) — Intact!",
+            F_SMALL,
+            (200, 220, 235),
+            False,
+        ))
+
+      if t >= 15.5:
+        # 案例 B：多次小力量累積損傷 (Breaks after many smaller forces)
+        cv2.rectangle(canvas, (980, 580), (1800, 820), (24, 44, 66), -1)
+        cv2.rectangle(
+            canvas, (980, 580), (1800, 820), (248, 113, 113), 2, cv2.LINE_AA
+        )
+        text_tasks.append((
+            (1010, 600),
+            "2. Many Small Repeated Loads (σ << σ_u)  →  BREAKS!",
+            F_BODY_B,
+            (248, 113, 113),
+            False,
+        ))
+        dmg_ratio = np.clip((t - 15.5) / 5.0, 0.1, 1.0)
+        num_bars = int(dmg_ratio * 12)
+        for b_i in range(12):
+          bx = 1010 + b_i * 62
+          col_b = (242, 133, 94) if b_i < num_bars else (45, 65, 85)
+          cv2.rectangle(canvas, (bx, 665), (bx + 48, 725), col_b, -1)
+        text_tasks.append((
+            (1010, 750),
+            f"Damage builds up one cycle at a time: Cycle #{int(dmg_ratio * 10000):05d}",
+            F_BODY_B,
+            (250, 204, 21),
+            False,
+        ))
+
+    # ================= SCENE 2 (00:21 - 00:34.5): 腳踏車輪輻條與應力循環正弦波 =================
+    elif sec_idx == 2:
+      # 左側：旋轉的腳踏車輪 ("Picture a bicycle wheel. Each rotation changes the forces on its spokes.")
+      cv2.rectangle(canvas, (80, 190), (820, 860), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (80, 190), (820, 860), (56, 189, 248), 2, cv2.LINE_AA
+      )
+      text_tasks.append((
+          (120, 220),
+          "Rotating Bicycle Wheel Spokes",
+          F_H2,
+          (56, 189, 248),
+          False,
+      ))
+
+      w_cx, w_cy, w_r = 450, 520, 210
+      theta_base = (t - s_t) * 2.4  # 車輪轉動角度
+
+      # 地面線與接觸點載荷
+      cv2.line(
+          canvas, (180, w_cy + w_r + 12), (720, w_cy + w_r + 12), (120, 145, 170), 4
+      )
+
+      # 繪製 12 根輻條，追蹤第 0 根目標輻條 (Target Spoke) 的受力變化
+      for s_i in range(12):
+        ang = theta_base + s_i * (2 * np.pi / 12)
+        sx_end = int(w_cx + w_r * np.cos(ang))
+        sy_end = int(w_cy + w_r * np.sin(ang))
+        if s_i == 0:
+          cv2.line(
+              canvas, (w_cx, w_cy), (sx_end, sy_end), (242, 133, 94), 6, cv2.LINE_AA
+          )
+          cv2.circle(canvas, (sx_end, sy_end), 12, (250, 204, 21), -1, cv2.LINE_AA)
+        else:
+          cv2.line(
+              canvas, (w_cx, w_cy), (sx_end, sy_end), (110, 130, 150), 2, cv2.LINE_AA
+          )
+
+      cv2.circle(canvas, (w_cx, w_cy), w_r, (220, 230, 240), 10, cv2.LINE_AA)
+      cv2.circle(canvas, (w_cx, w_cy), 22, (56, 189, 248), -1, cv2.LINE_AA)
+      text_tasks.append((
+          (450, 795),
+          "Highlighted Spoke: Loading & Unloading each rotation",
+          F_SMALL,
+          (250, 204, 21),
+          True,
+      ))
+
+      # 右側：與車輪旋轉完全同步的應力循環正弦波 ("One complete loading and unloading is called a cycle.")
+      gx1, gy1, gx2, gy2 = 880, 190, 1840, 860
+      cv2.rectangle(canvas, (gx1, gy1), (gx2, gy2), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (gx1, gy1), (gx2, gy2), (70, 100, 130), 2, cv2.LINE_AA
+      )
+      text_tasks.append((
+          (920, 220),
+          "One Complete Loading & Unloading = 1 Cycle",
+          F_H2,
+          (250, 204, 21),
+          False,
+      ))
+
+      mid_y = 540
+      ax_x1, ax_x2 = 960, 1780
+      cv2.line(
+          canvas, (ax_x1, mid_y), (ax_x2, mid_y), (140, 160, 180), 2, cv2.LINE_AA
+      )
+      cv2.line(
+          canvas, (ax_x1, 310), (ax_x1, 770), (140, 160, 180), 2, cv2.LINE_AA
+      )
+
+      text_tasks.append(
+          ((ax_x1 + 15, 310), "Stress (σ)", F_BODY_B, (220, 235, 250), False)
+      )
+      text_tasks.append(
+          ((ax_x1 + 20, 360), "+σ_max (Peak Tension)", F_SMALL, (242, 133, 94), False)
+      )
+      text_tasks.append((
+          (ax_x1 + 20, 710),
+          "-σ_min (Compression / Unloading)",
+          F_SMALL,
+          (56, 189, 248),
+          False,
+      ))
+      text_tasks.append(
+          ((ax_x2 - 210, mid_y + 20), "Cycles (N)", F_BODY_B, (200, 220, 240), False)
+      )
+
+      # 隨時間推進畫出正弦波，並標示 1 個完整週期 (1 Cycle)
+      draw_span = int((ax_x2 - ax_x1 - 40) * np.clip(prog * 1.15, 0.05, 1.0))
+      wave_pts = []
+      for dx in range(0, draw_span, 4):
+        x = ax_x1 + dx
+        y = int(mid_y - 145 * np.sin(2 * np.pi * (dx / 260.0)))
+        wave_pts.append([x, y])
+      if len(wave_pts) >= 2:
+        cv2.polylines(
+            canvas,
+            [np.array(wave_pts, dtype=np.int32)],
+            False,
+            (56, 189, 248),
+            5,
+            cv2.LINE_AA,
+        )
+        cv2.circle(
+            canvas, tuple(wave_pts[-1]), 11, (242, 133, 94), -1, cv2.LINE_AA
+        )
+
+      # 當旁白講到 "One complete loading and unloading is called a cycle" (t >= 26s) 標出週期括號
+      if t >= 25.5:
+        c_x1, c_x2 = ax_x1, ax_x1 + 260
+        cv2.line(canvas, (c_x1, 350), (c_x2, 350), (250, 204, 21), 3, cv2.LINE_AA)
+        cv2.line(canvas, (c_x1, 340), (c_x1, 360), (250, 204, 21), 3, cv2.LINE_AA)
+        cv2.line(canvas, (c_x2, 340), (c_x2, 360), (250, 204, 21), 3, cv2.LINE_AA)
+        text_tasks.append(
+            ((c_x1 + 65, 312), "1 Full Cycle", F_BODY_B, (250, 204, 21), False)
+        )
+
+      if t >= 30.0:
+        text_tasks.append((
+            (1360, 800),
+            "Repeated cycles gradually create microscopic damage!",
+            F_BODY_B,
+            (248, 113, 113),
+            True,
+        ))
+
+    # ================= SCENE 3 (00:34.5 - 00:51): 疲勞破壞三大階段總覽 =================
+    elif sec_idx == 3:
+      # 配合旁白：38s (Stage 1), 42.5s (Stage 2), 46s (Stage 3) 依序點亮三張直式工程圖卡
+      stages_info = [
+          (
+              "STAGE I: INITIATION",
+              "A tiny crack forms near a",
+              "scratch, corner, or defect.",
+              37.5,
+              (56, 189, 248),
+          ),
+          (
+              "STAGE II: PROPAGATION",
+              "Repeated cyclic loads (Δσ)",
+              "make the crack grow longer.",
+              42.2,
+              (250, 204, 21),
+          ),
+          (
+              "STAGE III: FINAL FRACTURE",
+              "Remaining metal cannot",
+              "support the load & snaps!",
+              45.8,
+              (248, 113, 113),
+          ),
+      ]
+
+      for idx, (st_title, line1, line2, trigger_t, col) in enumerate(stages_info):
+        cx1 = 90 + idx * 600
+        cx2 = cx1 + 540
+        cy1, cy2 = 210, 850
+        is_on = t >= trigger_t
+
+        bg_c = (22, 38, 58) if is_on else (15, 26, 40)
+        bd_c = col if is_on else (50, 70, 90)
+        cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), bg_c, -1)
+        cv2.rectangle(
+            canvas, (cx1, cy1), (cx2, cy2), bd_c, 4 if is_on else 2, cv2.LINE_AA
+        )
+
+        text_tasks.append((
+            (cx1 + 270, cy1 + 55),
+            st_title,
+            F_H2,
+            col if is_on else (100, 120, 140),
+            True,
+        ))
+
+        # 繪製各階段試片示意圖
+        sx1, sy1, sx2, sy2 = cx1 + 90, cy1 + 140, cx2 - 90, cy1 + 430
+        if is_on:
+          cv2.rectangle(canvas, (sx1, sy1), (sx2, sy2), (110, 125, 140), -1)
+          cv2.rectangle(canvas, (sx1, sy1), (sx2, sy2), (225, 235, 245), 3, cv2.LINE_AA)
+          notch_x = (sx1 + sx2) // 2
+          # V 型表面缺口 (Surface Notch / Scratch)
+          notch_pts = np.array(
+              [[notch_x - 16, sy1], [notch_x, sy1 + 24], [notch_x + 16, sy1]],
+              dtype=np.int32,
+          )
+          cv2.fillPoly(canvas, [notch_pts], bg_c, cv2.LINE_AA)
+
+          if idx == 0:
+            # Stage 1: 缺口尖端微小裂紋與紅圈
+            cv2.circle(canvas, (notch_x, sy1 + 28), 22, (255, 90, 50), 2, cv2.LINE_AA)
+            cv2.line(
+                canvas,
+                (notch_x, sy1 + 24),
+                (notch_x + 4, sy1 + 52),
+                (248, 113, 113),
+                4,
+                cv2.LINE_AA,
+            )
+            text_tasks.append((
+                (notch_x, sy1 - 22),
+                "Stress Raiser (Notch)",
+                F_SMALL,
+                (56, 189, 248),
+                True,
+            ))
+          elif idx == 1:
+            # Stage 2: 裂紋往下延伸 + 左右水平拉力箭頭
+            cv2.line(
+                canvas,
+                (notch_x, sy1 + 24),
+                (notch_x - 6, sy1 + 185),
+                (250, 204, 21),
+                5,
+                cv2.LINE_AA,
+            )
+            cv2.circle(
+                canvas, (notch_x - 6, sy1 + 185), 14, (255, 100, 50), -1, cv2.LINE_AA
+            )
+            draw_vector_h_arrow(
+                canvas, sx1 - 10, sx1 - 65, (sy1 + sy2) // 2, (242, 133, 94)
+            )
+            draw_vector_h_arrow(
+                canvas, sx2 + 10, sx2 + 65, (sy1 + sy2) // 2, (242, 133, 94)
+            )
+          else:
+            # Stage 3: 試片完全斷裂分離
+            cv2.rectangle(canvas, (sx1, sy1), (sx2, sy2), bg_c, -1)
+            cv2.rectangle(
+                canvas, (sx1 - 12, sy1), (notch_x - 8, sy2), (110, 125, 140), -1
+            )
+            cv2.rectangle(
+                canvas, (notch_x + 12, sy1), (sx2 + 12, sy2), (110, 125, 140), -1
+            )
+            cv2.line(
+                canvas,
+                (notch_x - 8, sy1),
+                (notch_x - 8, sy2),
+                (248, 113, 113),
+                4,
+                cv2.LINE_AA,
+            )
+            cv2.line(
+                canvas,
+                (notch_x + 12, sy1),
+                (notch_x + 12, sy2),
+                (248, 113, 113),
+                4,
+                cv2.LINE_AA,
+            )
+
+          text_tasks.append(
+              ((cx1 + 270, cy1 + 505), line1, F_BODY_B, (235, 242, 250), True)
+          )
+          text_tasks.append(
+              ((cx1 + 270, cy1 + 550), line2, F_BODY, (190, 210, 230), True)
+          )
+        else:
+          text_tasks.append((
+              (cx1 + 270, (cy1 + cy2) // 2),
+              "Waiting for narration...",
+              F_BODY,
+              (80, 100, 120),
+              True,
+          ))
+
+    # ================= SCENE 4 (00:51 - 01:03.5): Mode I 裂縫成長動態模擬 =================
+    elif sec_idx == 4:
+      # 旁白："Watch the strip as the load is applied, released, then applied again..."
+      pulse = 0.5 - 0.5 * np.cos(2 * np.pi * 1.6 * (t - s_t))
+      stretch = int(10 * pulse)
+      bx1, by1, bx2, by2 = 600 - stretch, 300, 1320 + stretch, 720
+
+      # 左側面板
+      cv2.rectangle(canvas, (80, 330), (430, 690), (18, 34, 52), -1)
+      cv2.rectangle(
+          canvas, (80, 330), (430, 690), (56, 189, 248), 2, cv2.LINE_AA
+      )
+      text_tasks.append(
+          ((255, 385), "STRESS CYCLES (N)", F_BODY_B, (56, 189, 248), True)
+      )
+      cyc_num = int(15000 + prog * 75000)
+      text_tasks.append(
+          ((255, 490), f"{cyc_num:06d}", F_MATH_L, (250, 204, 21), True)
+      )
+      state_txt = "LOAD APPLIED (+σ)" if pulse > 0.5 else "RELEASED (Unloaded)"
+      state_col = (242, 133, 94) if pulse > 0.5 else (140, 180, 210)
+      text_tasks.append(((255, 595), state_txt, F_BODY_B, state_col, True))
+
+      # 試片本體與水平流線
+      cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (110, 124, 138), -1)
+      for ly in np.linspace(by1 + 45, by2 - 45, 6):
+        cv2.line(
+            canvas,
+            (bx1 + 12, int(ly)),
+            (bx2 - 12, int(ly)),
+            (95, 108, 122),
+            2,
+            cv2.LINE_AA,
+        )
+      cv2.rectangle(
+          canvas, (bx1, by1), (bx2, by2), (230, 236, 242), 4, cv2.LINE_AA
+      )
+
+      # Mode I 垂直裂縫隨每次循環緩慢往下長
+      max_c_len = int((by2 - by1) * 0.85)
+      cur_c_len = int(max_c_len * (0.15 + 0.80 * prog))
+      cx_origin = 1040
+      offsets = [0, -7, 5, -9, 6, -6, 8, -5, 7, -8, 4, -6, 5, -3, 0]
+      pts_l, pts_r = [], []
+      for i in range(15):
+        r = i / 14.0
+        cy = by1 + int(cur_c_len * r)
+        jit = int(offsets[i] * 0.9)
+        open_w = int((2.0 + 5.5 * pulse) * (1.0 - 0.72 * r))
+        pts_l.append([cx_origin + jit - open_w, cy])
+        pts_r.append([cx_origin + jit + open_w, cy])
+
+      tip_pt = tuple(pts_l[-1])
+      ov = canvas.copy()
+      cv2.circle(
+          ov, tip_pt, int(18 + 16 * pulse), (255, 90, 50), -1, cv2.LINE_AA
+      )
+      cv2.addWeighted(ov, 0.45, canvas, 0.55, 0, canvas)
+      cv2.fillPoly(
+          canvas,
+          [np.array(pts_l + pts_r[::-1], dtype=np.int32)],
+          (20, 24, 30),
+          cv2.LINE_AA,
+      )
+      cv2.polylines(
+          canvas,
+          [np.array(pts_l, dtype=np.int32)],
+          False,
+          (242, 133, 94),
+          3,
+          cv2.LINE_AA,
+      )
+      cv2.polylines(
+          canvas,
+          [np.array(pts_r, dtype=np.int32)],
+          False,
+          (242, 133, 94),
+          3,
+          cv2.LINE_AA,
+      )
+
+      # 左右水平拉力箭頭 (← σ 與 σ →)
+      alen = int(45 + 90 * pulse)
+      shift = int(16 * pulse)
+      draw_vector_h_arrow(
+          canvas,
+          bx1 - 15 - shift,
+          bx1 - 15 - shift - alen,
+          (by1 + by2) // 2,
+          (245, 138, 96),
+          shaft_h=10,
+          head_w=28,
+          head_h=24,
+      )
+      draw_vector_h_arrow(
+          canvas,
+          bx2 + 15 + shift,
+          bx2 + 15 + shift + alen,
+          (by1 + by2) // 2,
+          (245, 138, 96),
+          shaft_h=10,
+          head_w=28,
+          head_h=24,
+      )
+      text_tasks.append((
+          (bx1 - 65 - shift, (by1 + by2) // 2 - 45),
+          "σ (Tension)",
+          F_BODY_B,
+          (245, 138, 96),
+          True,
+      ))
+      text_tasks.append((
+          (bx2 + 65 + shift, (by1 + by2) // 2 - 45),
+          "σ (Tension)",
+          F_BODY_B,
+          (245, 138, 96),
+          True,
+      ))
+
+      # 右側裂縫長度面板
+      cv2.rectangle(canvas, (1480, 380), (1840, 640), (18, 34, 52), -1)
+      cv2.rectangle(
+          canvas, (1480, 380), (1840, 640), (242, 133, 94), 2, cv2.LINE_AA
+      )
+      text_tasks.append(
+          ((1660, 435), "CRACK LENGTH (a)", F_BODY_B, (210, 225, 240), True)
+      )
+      text_tasks.append((
+          (1660, 540),
+          f"{int(15 + 75 * prog)}%",
+          F_MATH_L,
+          (242, 133, 94),
+          True,
+      ))
+
+    # ================= SCENE 5 (01:03.5 - 01:19.5): 斷口表面分析 (真實金屬斷口照片) =================
+    elif sec_idx == 5:
+      # 旁白：63.5s (Examine fracture surface), 68s (Beachmarks), 72.5s (Rougher region / Overstress), 75.5s (Identify origin)
+      if specimen_rgb is not None:
+        ih, iw, _ = specimen_rgb.shape
+        target_h = 600
+        target_w = int(iw * (target_h / ih))
+        resized_spec = cv2.resize(
+            specimen_rgb, (target_w, target_h), interpolation=cv2.INTER_AREA
+        )
+        sx, sy = 100, 220
+        canvas[sy : sy + target_h, sx : sx + target_w] = resized_spec
+        cv2.rectangle(
+            canvas,
+            (sx - 4, sy - 4),
+            (sx + target_w + 4, sy + target_h + 4),
+            (56, 189, 248),
+            3,
+            cv2.LINE_AA,
+        )
+      else:
+        sx, sy, target_w, target_h = 100, 220, 750, 600
+        cv2.rectangle(
+            canvas, (sx, sy), (sx + target_w, sy + target_h), (40, 55, 70), -1
+        )
+
+      rx = 920
+      cards = [
+          (
+              "1. BEACHMARKS (Curved Progression Marks)",
+              "Reveal how the crack advanced cycle-by-cycle over time.",
+              67.5,
+              (250, 204, 21),
+          ),
+          (
+              "2. OVERSTRESS ZONE (Rougher Region)",
+              "Shows the final sudden fast fracture when remaining area failed.",
+              72.0,
+              (248, 113, 113),
+          ),
+          (
+              "3. CRACK ORIGIN IDENTIFICATION",
+              "Concentric beachmarks point back to where the crack began.",
+              75.2,
+              (56, 189, 248),
+          ),
+      ]
+      for idx, (c_title, c_desc, trig_t, col) in enumerate(cards):
+        cy = 230 + idx * 200
+        active = t >= trig_t
+        bg_c = (24, 44, 64) if active else (16, 28, 42)
+        bd_c = col if active else (50, 70, 90)
+        cv2.rectangle(canvas, (rx, cy), (1840, cy + 165), bg_c, -1)
+        cv2.rectangle(
+            canvas,
+            (rx, cy),
+            (1840, cy + 165),
+            bd_c,
+            4 if active else 1,
+            cv2.LINE_AA,
+        )
+        text_tasks.append((
+            (rx + 30, cy + 35),
+            c_title,
+            F_BODY_B,
+            col if active else (110, 130, 150),
+            False,
+        ))
+        text_tasks.append((
+            (rx + 30, cy + 95),
+            c_desc,
+            F_BODY,
+            (230, 240, 250) if active else (95, 110, 125),
+            False,
+        ))
+
+    # ================= SCENE 6 (01:19.5 - 01:55.5): S-N 曲線與疲勞極限 (按旁白時間點繪製) =================
+    elif sec_idx == 6:
+      gx1, gy1, gx2, gy2 = 220, 230, 1480, 810
+      cv2.line(canvas, (gx1, gy2), (gx2, gy2), (215, 230, 245), 3, cv2.LINE_AA)
+      cv2.line(canvas, (gx1, gy1), (gx1, gy2), (215, 230, 245), 3, cv2.LINE_AA)
+
+      # 79.5s ~ 94s：隨旁白依序點亮 S 軸與 N 軸定義
+      s_highlight = (250, 204, 21) if t >= 83.5 else (200, 220, 240)
+      n_highlight = (56, 189, 248) if t >= 88.0 else (200, 220, 240)
+      text_tasks.append((
+          (gx1 - 100, gy1 - 45),
+          "Stress Amplitude, S (σ_a)",
+          F_BODY_B,
+          s_highlight,
+          False,
+      ))
+      text_tasks.append((
+          (gx2 - 420, gy2 + 45),
+          "Number of Cycles to Failure, log₁₀(N)",
+          F_BODY_B,
+          n_highlight,
+          False,
+      ))
+
+      # 對數座標刻度 (10³ ~ 10⁸)
+      for i, lbl in enumerate(["10³", "10⁴", "10⁵", "10⁶", "10⁷", "10⁸"]):
+        tx = gx1 + int((i + 1) * (gx2 - gx1) / 6.5)
+        cv2.line(canvas, (tx, gy2 - 8), (tx, gy2 + 8), (215, 230, 245), 2)
+        text_tasks.append(
+            ((tx, gy2 + 25), lbl, F_SMALL, (180, 200, 220), True)
+        )
+
+      # 右側說明小卡 (S 與 N 的物理意義)
+      cv2.rectangle(canvas, (1520, 230), (1860, 520), (20, 36, 54), -1)
+      cv2.rectangle(
+          canvas, (1520, 230), (1860, 520), (70, 100, 130), 2, cv2.LINE_AA
+      )
+      if t >= 83.5:
+        text_tasks.append((
+            (1545, 255),
+            "• S (σ_a): Stress Amplitude",
+            F_BODY_B,
+            (250, 204, 21),
+            False,
+        ))
+        text_tasks.append((
+            (1545, 295),
+            "  Size of repeated stress",
+            F_SMALL,
+            (215, 230, 245),
+            False,
+        ))
+      if t >= 88.0:
+        text_tasks.append((
+            (1545, 365),
+            "• N: Fatigue Life",
+            F_BODY_B,
+            (56, 189, 248),
+            False,
+        ))
+        text_tasks.append((
+            (1545, 405),
+            "  Cycles until failure",
+            F_SMALL,
+            (215, 230, 245),
+            False,
+        ))
+
+      # 等到 95.0s 旁白說 "Notice the trend: high stress usually means fewer cycles..." 才開始畫曲線！
+      if t >= 94.5:
+        curve_prog = np.clip((t - 94.5) / 10.0, 0.0, 1.0)
+        max_draw_x = gx1 + int((gx2 - gx1 - 60) * curve_prog)
+        knee_x = gx1 + int(4 * (gx2 - gx1) / 6.5)
+        endurance_y = gy1 + 330
+
+        steel_pts = []
+        for x in range(gx1 + 25, max_draw_x, 6):
+          if x <= knee_x:
+            r = (x - (gx1 + 25)) / float(knee_x - (gx1 + 25))
+            y = int((gy1 + 70) + r * (endurance_y - (gy1 + 70)))
+          else:
+            y = endurance_y
+          steel_pts.append([x, y])
+
+        if len(steel_pts) >= 2:
+          cv2.polylines(
+              canvas,
+              [np.array(steel_pts, dtype=np.int32)],
+              False,
+              (56, 189, 248),
+              5,
+              cv2.LINE_AA,
+          )
+
+        # 標出高應力短壽命 (96s) 與低應力長壽命 (100s)
+        if t >= 96.0:
+          p_high = (gx1 + 90, int((gy1 + 70) + (65 / float(knee_x - gx1 - 25)) * (endurance_y - gy1 - 70)))
+          cv2.circle(canvas, p_high, 10, (248, 113, 113), -1, cv2.LINE_AA)
+          text_tasks.append((
+              (p_high[0] + 20, p_high[1] - 15),
+              "High Stress σ → Fewer Cycles (Short Life)",
+              F_BODY_B,
+              (248, 113, 113),
+              False,
+          ))
+        if t >= 100.0:
+          p_low = (knee_x - 30, endurance_y - 12)
+          cv2.circle(canvas, p_low, 10, (250, 204, 21), -1, cv2.LINE_AA)
+          text_tasks.append((
+              (p_low[0] - 80, p_low[1] - 48),
+              "Lower Stress σ → Longer Life",
+              F_BODY_B,
+              (250, 204, 21),
+              False,
+          ))
+
+        # 103.5s 旁白說到 "endurance limit may exist" 時才畫出綠色疲勞極限線 σ_e
+        if t >= 103.5:
+          for dx in range(gx1, gx2, 28):
+            cv2.line(
+                canvas,
+                (dx, endurance_y),
+                (dx + 14, endurance_y),
+                (74, 222, 128),
+                3,
+                cv2.LINE_AA,
+            )
+          text_tasks.append((
+              (gx1 + 60, endurance_y + 22),
+              "Endurance Limit (σ_e) — Steel Safe Infinite Life Threshold",
+              F_BODY_B,
+              (74, 222, 128),
+              False,
+          ))
+
+        if t >= 109.5:
+          text_tasks.append((
+              (1520, 580),
+              "* Simplified conceptual curve",
+              F_SMALL,
+              (170, 190, 210),
+              False,
+          ))
+          text_tasks.append((
+              (1520, 615),
+              "  (Not experimental data)",
+              F_SMALL,
+              (170, 190, 210),
+              False,
+          ))
+
+    # ================= SCENE 7 (01:55.5 - 02:26.5): 斷裂韌性 K_IC 與應力強度因子 K = Yσ√(πa) =================
+    elif sec_idx == 7:
+      # 左側：裂縫尖端應力集中動態視覺化 ("As a crack grows, stress becomes concentrated near its tip...")
+      cv2.rectangle(canvas, (80, 210), (960, 840), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (80, 210), (960, 840), (56, 189, 248), 2, cv2.LINE_AA
+      )
+      text_tasks.append((
+          (120, 235),
+          "Crack-Tip Stress Concentration",
+          F_H2,
+          (56, 189, 248),
+          False,
+      ))
+
+      bx1, by1, bx2, by2 = 220, 340, 820, 720
+      cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (108, 122, 136), -1)
+      cv2.rectangle(
+          canvas, (bx1, by1), (bx2, by2), (225, 235, 245), 3, cv2.LINE_AA
+      )
+
+      c_len = int(60 + 210 * prog)
+      cx_p = 520
+      tip_y = by1 + c_len
+
+      # 裂縫尖端多重應力等高線光暈 (隨裂縫增長顯著擴大)
+      pulse = 0.5 + 0.5 * np.sin(2 * np.pi * 2.5 * t)
+      ov = canvas.copy()
+      r_outer = int((25 + 65 * prog) * (0.9 + 0.2 * pulse))
+      cv2.circle(ov, (cx_p, tip_y), r_outer, (255, 60, 30), -1, cv2.LINE_AA)
+      cv2.circle(
+          ov, (cx_p, tip_y), int(r_outer * 0.55), (250, 204, 21), -1, cv2.LINE_AA
+      )
+      cv2.addWeighted(ov, 0.5, canvas, 0.5, 0, canvas)
+
+      # 鋸齒裂縫
+      pts_c = [
+          [cx_p - 6, by1],
+          [cx_p, tip_y],
+          [cx_p + 6, by1],
+      ]
+      cv2.fillPoly(
+          canvas, [np.array(pts_c, dtype=np.int32)], (20, 24, 30), cv2.LINE_AA
+      )
+      cv2.polylines(
+          canvas,
+          [np.array(pts_c, dtype=np.int32)],
+          False,
+          (242, 133, 94),
+          3,
+          cv2.LINE_AA,
+      )
+
+      draw_vector_h_arrow(canvas, bx1 - 15, bx1 - 95, 530, (242, 133, 94))
+      draw_vector_h_arrow(canvas, bx2 + 15, bx2 + 95, 530, (242, 133, 94))
+      text_tasks.append(
+          ((cx_p + r_outer + 15, tip_y - 12), "Crack Tip K", F_BODY_B, (250, 204, 21), False)
+      )
+
+      # 右側：依旁白秒數逐步推導公式 (116s 定義 Fracture Toughness, 130s 介紹 K, 136s 顯示 √a 公式, 141.5s 顯示 K >= K_IC)
+      rx1, ry1, rx2, ry2 = 1020, 210, 1840, 840
+      cv2.rectangle(canvas, (rx1, ry1), (rx2, ry2), (18, 33, 50), -1)
+      cv2.rectangle(
+          canvas, (rx1, ry1), (rx2, ry2), (70, 100, 130), 2, cv2.LINE_AA
+      )
+
+      text_tasks.append((
+          (1060, 240),
+          "Fracture Toughness (K_IC)",
+          F_H2,
+          (56, 189, 248),
+          False,
+      ))
+      text_tasks.append((
+          (1060, 290),
+          "Material's resistance to crack-driven fracture.",
+          F_BODY,
+          (220, 235, 245),
+          False,
+      ))
+
+      if t >= 129.5:
+        cv2.rectangle(canvas, (1060, 355), (1800, 465), (24, 44, 66), -1)
+        cv2.rectangle(
+            canvas, (1060, 355), (1800, 465), (250, 204, 21), 2, cv2.LINE_AA
+        )
+        text_tasks.append((
+            (1085, 375),
+            "Stress Intensity Factor (K):",
+            F_BODY_B,
+            (250, 204, 21),
+            False,
+        ))
+        text_tasks.append((
+            (1085, 415),
+            "Describes the intensity of crack-tip loading.",
+            F_BODY,
+            (225, 235, 245),
+            False,
+        ))
+
+      if t >= 135.5:
+        # 旁白："K increases with applied stress and the square root of crack length."
+        cv2.rectangle(canvas, (1060, 490), (1800, 640), (24, 44, 66), -1)
+        cv2.rectangle(
+            canvas, (1060, 490), (1800, 640), (56, 189, 248), 2, cv2.LINE_AA
+        )
+        sqrt_tasks.append((
+            1160,
+            515,
+            "K = Y · σ · ",
+            "π · a",
+            "",
+            F_MATH_L,
+            (250, 204, 21),
+        ))
+        text_tasks.append((
+            (1085, 585),
+            "σ = Applied Stress   |   a = Crack Length",
+            F_BODY,
+            (200, 220, 240),
+            False,
+        ))
+
+      if t >= 141.0:
+        # 旁白："When K reaches a critical value, rapid fracture can begin."
+        cv2.rectangle(canvas, (1060, 665), (1800, 810), (45, 22, 30), -1)
+        cv2.rectangle(
+            canvas, (1060, 665), (1800, 810), (248, 113, 113), 3, cv2.LINE_AA
+        )
+        text_tasks.append((
+            (1430, 705),
+            "Critical Rapid Fracture:   K ≥ K_IC",
+            F_MATH_M,
+            (248, 113, 113),
+            True,
+        ))
+        text_tasks.append((
+            (1430, 765),
+            "Unstable fast fracture begins immediately!",
+            F_BODY_B,
+            (255, 200, 200),
+            True,
+        ))
+
+    # ================= SCENE 8 (02:26.5 - 03:00): 四大工程預防對策與總結 =================
+    else:
+      # 146.5s ~ 161s：配合旁白逐一點亮 4 張預防工程卡片
+      prev_cards = [
+          (
+              "1. Reduce Repeated Stress (↓ Δσ)",
+              "Lower cyclic load amplitude to stay below endurance limit σ_e.",
+              148.5,
+              (56, 189, 248),
+          ),
+          (
+              "2. Avoid Sharp Corners (Fillet Radius)",
+              "Use smooth transitions to minimize stress concentration K_t.",
+              150.5,
+              (250, 204, 21),
+          ),
+          (
+              "3. Choose Suitable Materials",
+              "Select alloys with high fatigue strength & fracture toughness K_IC.",
+              152.2,
+              (74, 222, 128),
+          ),
+          (
+              "4. Inspect Components Regularly (NDT)",
+              "Detect and manage small cracks before a reaches critical size a_c!",
+              154.2,
+              (242, 133, 94),
+          ),
+      ]
+
+      for idx, (p_title, p_desc, trig_t, col) in enumerate(prev_cards):
+        col_idx = idx % 2
+        row_idx = idx // 2
+        cx1 = 90 + col_idx * 890
+        cy1 = 195 + row_idx * 220
+        cx2, cy2 = cx1 + 850, cy1 + 190
+        active = t >= trig_t
+
+        bg_c = (22, 40, 60) if active else (15, 26, 40)
+        bd_c = col if active else (50, 70, 90)
+        cv2.rectangle(canvas, (cx1, cy1), (cx2, cy2), bg_c, -1)
+        cv2.rectangle(
+            canvas,
+            (cx1, cy1),
+            (cx2, cy2),
+            bd_c,
+            3 if active else 1,
+            cv2.LINE_AA,
+        )
+        text_tasks.append((
+            (cx1 + 30, cy1 + 35),
+            p_title,
+            F_H2,
+            col if active else (100, 120, 140),
+            False,
+        ))
+        text_tasks.append((
+            (cx1 + 30, cy1 + 105),
+            p_desc,
+            F_BODY,
+            (225, 235, 245) if active else (90, 105, 120),
+            False,
+        ))
+
+      # 161.0s 起：底部最終總結橫幅 ("The key idea is simple... S-N diagram... endurance limit... fracture toughness...")
+      if t >= 161.0:
+        cv2.rectangle(canvas, (90, 645), (1830, 855), (24, 46, 68), -1)
+        cv2.rectangle(
+            canvas, (90, 645), (1830, 855), (56, 189, 248), 3, cv2.LINE_AA
+        )
+        text_tasks.append((
+            (960, 685),
+            "SUMMARY:  Repeated Loading (Δσ)  →  Crack Growth (da/dN = C(ΔK)ᵐ)  →  Fast Fracture (K ≥ K_IC)",
+            F_BODY_B,
+            (250, 204, 21),
+            True,
+        ))
+        sqrt_tasks.append((
+            530,
+            745,
+            "Critical Condition:   K_max = Y · σ · ",
+            "π · a_c",
+            " ≥ K_IC",
+            F_MATH_M,
+            (74, 222, 128),
+        ))
+
+    # --- 底部英文字幕區 ---
+    cv2.rectangle(canvas, (0, H - 120), (W, H), (8, 15, 24), -1)
+    cv2.line(canvas, (0, H - 120), (W, H - 120), (40, 65, 90), 2)
+    cur_sub = ""
+    for s_sub, e_sub, txt in subtitles:
+      if s_sub <= t <= e_sub:
+        cur_sub = txt
+        break
+    if cur_sub:
+      text_tasks.append(
+          ((W // 2, H - 60), cur_sub, F_SUB, (248, 250, 252), True)
+      )
+
+    # 將畫布轉為 PIL Image 進行高品質真字型與數學符號 (σ, √, π, Δ, ≥) 渲染
+    pil_img = Image.fromarray(canvas)
+    draw = ImageDraw.Draw(pil_img)
+
+    for pos, txt, font, col, is_center in text_tasks:
+      draw_text(draw, pos, txt, font, col, anchor_center=is_center)
+
+    # 先轉回 numpy 畫根號頂部橫線，再合併文字
+    canvas_with_text = np.array(pil_img)
+    pil_img2 = Image.fromarray(canvas_with_text)
+    draw2 = ImageDraw.Draw(pil_img2)
+    for sx, sy, pref, inside, suff, fnt, col in sqrt_tasks:
+      draw_sqrt_expr(
+          canvas_with_text, draw2, sx, sy, pref, inside, suff, fnt, col
+      )
+      pil_img2 = Image.fromarray(canvas_with_text)
+      draw2 = ImageDraw.Draw(pil_img2)
+      draw_sqrt_expr(
+          canvas_with_text, draw2, sx, sy, pref, inside, suff, fnt, col
+      )
+
+    return np.array(pil_img2)
+
+  print(
+      "正在渲染 1080p 旁白同步 + 真實數學符號 (σ, √) 教學影片..."
+  )
+  full_clip = VideoClip(make_frame, duration=duration).set_audio(audio_clip)
+  full_clip.write_videofile(
+      output_video, fps=24, codec="libx264", audio_codec="aac"
+  )
+  print(f"完成！全新同步影片已儲存至桌面：{output_video}")
